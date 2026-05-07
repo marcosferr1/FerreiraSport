@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Wrench, Plus, Trash2 } from 'lucide-react'
-import { Button, Card, CardSection, Input, Select, Textarea } from '../components/inline/Primitives'
+import { Button, Card, CardSection, CircularProgress, Input, Select, Textarea } from '../components/inline/Primitives'
 import { useAuth } from '../auth/useAuth'
 import { api } from '../api/client'
 import { usePalette } from '../theme/ThemeProvider'
@@ -358,7 +358,14 @@ export default function ServiceWizardPage() {
       </Card>
 
       {loading ? (
-        <Card><CardSection>Cargando…</CardSection></Card>
+        <Card>
+          <CardSection>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CircularProgress size={24} />
+              <div style={{ fontWeight: 900 }}>Cargando…</div>
+            </div>
+          </CardSection>
+        </Card>
       ) : (
         <Card>
           <CardSection style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>

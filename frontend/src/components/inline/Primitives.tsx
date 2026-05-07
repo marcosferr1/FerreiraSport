@@ -167,6 +167,45 @@ export function ProgressBar({
   )
 }
 
+export function CircularProgress({ size = 28 }: { size?: number }) {
+  const p = usePalette()
+  const stroke = Math.max(2, Math.round(size * 0.1))
+  const radius = (size - stroke) / 2
+  const dash = Math.PI * radius
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="progressbar" aria-label="Cargando">
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke={p.cardBorder}
+        strokeWidth={stroke}
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke={p.primary}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={`${dash} ${dash * 1.6}`}
+      >
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from={`0 ${size / 2} ${size / 2}`}
+          to={`360 ${size / 2} ${size / 2}`}
+          dur="0.9s"
+          repeatCount="indefinite"
+        />
+      </circle>
+    </svg>
+  )
+}
+
 function baseSelectRadius() {
   return baseRadius()
 }

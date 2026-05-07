@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, CarFront, FileText, LayoutDashboard, Users, Wallet, Wrench, Package } from 'lucide-react'
+import { LogOut, CarFront, FileText, LayoutDashboard, Users, Wallet, Wrench, Package, Menu } from 'lucide-react'
 import { useAuth } from '../auth/useAuth'
 import { usePalette, useTheme } from '../theme/ThemeProvider'
 import { Button } from '../components/inline/Primitives'
@@ -23,6 +23,8 @@ export default function DashboardPage() {
   const location = useLocation()
   const { mode, setMode } = useTheme()
   const p = usePalette()
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 1024 : false))
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const navItems: NavItem[] = useMemo(
     () => [
@@ -48,12 +50,29 @@ export default function DashboardPage() {
     navigate('/login')
   }
 
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 1024)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    if (isMobile) setMenuOpen(false)
+  }, [location.pathname, isMobile])
+
   const sidebarIsDark = mode !== 'light'
   const asideBg = sidebarIsDark ? '#0F172A' : '#FFFFFF'
   const asideText = sidebarIsDark ? '#E5E7EB' : p.text
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
+      {isMobile && menuOpen ? (
+        <div
+          onClick={() => setMenuOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.45)', zIndex: 40 }}
+        />
+      ) : null}
       <aside
         style={{
           width: 260,
@@ -62,6 +81,13 @@ export default function DashboardPage() {
           borderRight: `1px solid ${sidebarIsDark ? 'rgba(255,255,255,0.10)' : p.sidebarBorder}`,
           padding: '20px 12px',
           boxSizing: 'border-box',
+          position: isMobile ? 'fixed' : 'relative',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 50,
+          transform: isMobile ? (menuOpen ? 'translateX(0)' : 'translateX(-110%)') : 'none',
+          transition: isMobile ? 'transform 0.2s ease' : undefined,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 6px 18px 6px' }}>
@@ -141,11 +167,18 @@ export default function DashboardPage() {
       <main style={{ flex: 1, background: p.background, color: p.text }}>
         <div style={{ padding: 24, boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 18 }}>
-            <div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              {isMobile ? (
+                <Button variant="outline" size="sm" onClick={() => setMenuOpen((v) => !v)}>
+                  <Menu size={16} />
+                </Button>
+              ) : null}
+              <div>
               <div style={{ fontSize: 18, fontWeight: 900, lineHeight: '22px' }}>Sistema de Taller</div>
               <div style={{ fontSize: 13, opacity: 0.7 }}>
                 Modo: <b>{mode}</b>
               </div>
+            </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

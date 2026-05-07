@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, FileText, Plus, Search, Trash2, Wallet, Wrench, XCircle } from 'lucide-react'
-import { Badge, Button, Card, CardSection, Input, Modal, Select, Textarea } from '../components/inline/Primitives'
+import { Badge, Button, Card, CardSection, CircularProgress, Input, Modal, Select, Textarea } from '../components/inline/Primitives'
 import { useAuth } from '../auth/useAuth'
 import { api } from '../api/client'
 import { usePalette } from '../theme/ThemeProvider'
@@ -433,7 +433,14 @@ export default function BudgetsPage() {
       </div>
 
       {loading ? (
-        <Card><CardSection>Cargando…</CardSection></Card>
+        <Card>
+          <CardSection>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CircularProgress size={24} />
+              <div style={{ fontWeight: 900 }}>Cargando…</div>
+            </div>
+          </CardSection>
+        </Card>
       ) : error ? (
         <Card style={{ borderColor: 'rgba(239,68,68,0.35)' }}><CardSection>{error}</CardSection></Card>
       ) : (

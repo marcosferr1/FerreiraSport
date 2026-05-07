@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, Search } from 'lucide-react'
-import { Button, Card, CardSection, Input, Modal, Select } from '../components/inline/Primitives'
+import { Button, Card, CardSection, CircularProgress, Input, Modal, Select } from '../components/inline/Primitives'
 import { useAuth } from '../auth/useAuth'
 import { api } from '../api/client'
 
@@ -150,7 +150,16 @@ export default function ServiceCatalogPage() {
         </CardSection>
       </Card>
 
-      {loading ? <Card><CardSection>Cargando…</CardSection></Card> : null}
+      {loading ? (
+        <Card>
+          <CardSection>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CircularProgress size={24} />
+              <div style={{ fontWeight: 900 }}>Cargando…</div>
+            </div>
+          </CardSection>
+        </Card>
+      ) : null}
       {error ? <Card style={{ borderColor: 'rgba(239,68,68,0.35)' }}><CardSection>{error}</CardSection></Card> : null}
 
       {!loading && (

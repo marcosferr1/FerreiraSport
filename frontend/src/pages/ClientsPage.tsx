@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Search, User } from 'lucide-react'
-import { Badge, Button, Card, CardSection, Input, Modal, Select } from '../components/inline/Primitives'
+import { Badge, Button, Card, CardSection, CircularProgress, Input, Modal, Select } from '../components/inline/Primitives'
 import { usePalette } from '../theme/ThemeProvider'
 import { useAuth } from '../auth/useAuth'
 import { api } from '../api/client'
@@ -26,6 +26,18 @@ export default function ClientsPage() {
   const [clientModalOpen, setClientModalOpen] = useState(false)
   const [creatingClient, setCreatingClient] = useState(false)
   const [clientFormError, setClientFormError] = useState<string | null>(null)
+  const [openVehicleAfterCreate, setOpenVehicleAfterCreate] = useState(false)
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+  const [clientDetailsOpen, setClientDetailsOpen] = useState(false)
+  const [vehicleModalOpen, setVehicleModalOpen] = useState(false)
+  const [creatingVehicle, setCreatingVehicle] = useState(false)
+  const [vehicleFormError, setVehicleFormError] = useState<string | null>(null)
+  const [vehicleForm, setVehicleForm] = useState({
+    plate: '',
+    make: '',
+    model: '',
+    year: '',
+  })
   const [clientForm, setClientForm] = useState({
     type: 'PARTICULAR',
     name: '',
@@ -104,8 +116,10 @@ export default function ClientsPage() {
         </div>
         <Card style={{ borderColor: p.cardBorder }}>
           <CardSection style={{ padding: 18 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Cargando…</div>
-            <div style={{ fontSize: 13, opacity: 0.7 }}>Consultando la API.</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CircularProgress size={24} />
+              <div style={{ fontWeight: 900 }}>Cargando…</div>
+            </div>
           </CardSection>
         </Card>
       </div>
@@ -143,6 +157,7 @@ export default function ClientsPage() {
           onClick={() => {
             setClientFormError(null)
             setClientForm({ type: 'PARTICULAR', name: '', phone: '', email: '', doc: '' })
+            setOpenVehicleAfterCreate(false)
             setClientModalOpen(true)
           }}
         >
@@ -198,7 +213,14 @@ export default function ClientsPage() {
                   </div>
 
                   <div style={{ marginTop: 16 }}>
-                    <Button variant="outline" style={{ width: '100%' }}>
+                    <Button
+                      variant="outline"
+                      style={{ width: '100%' }}
+                      onClick={() => {
+                        setSelectedClientId(c.id)
+                        setClientDetailsOpen(true)
+                      }}
+                    >
                       Ver Detalles
                     </Button>
                   </div>
@@ -251,6 +273,24 @@ export default function ClientsPage() {
             <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Documento (opcional)</label>
             <Input value={clientForm.doc} onChange={(e) => setClientForm((s) => ({ ...s, doc: e.target.value }))} placeholder="DNI/NIE/CIF" />
           </div>
+
+          <button
+            type="button"
+            onClick={() => setOpenVehicleAfterCreate((v) => !v)}
+            style={{
+              borderRadius: 12,
+              border: '1px solid rgba(37, 99, 235, 0.25)',
+              background: openVehicleAfterCreate ? 'rgba(37, 99, 235, 0.16)' : 'rgba(37, 99, 235, 0.08)',
+              color: 'inherit',
+              padding: '10px 12px',
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 700,
+            }}
+          >
+            {openVehicleAfterCreate ? 'Se creará vehículo después de guardar cliente' : 'También crear vehículo al finalizar'}
+          </button>
 
           {clientFormError ? (
             <div
@@ -307,7 +347,8 @@ export default function ClientsPage() {
 
                   // Recargar desde la API
                   const [customersRes, vehiclesRes] = await Promise.all([api.customers.list(t!), api.vehicles.list(t!)])
-                  setCustomers(customersRes.data || [])
+                  const refreshedCustomers = customersRes.data || []
+                  setCustomers(refreshedCustomers)
                   setVehicles(
                     (vehiclesRes.data || []).map((v: any) => ({
                       id: v.id,
@@ -316,6 +357,15 @@ export default function ClientsPage() {
                   )
 
                   setClientModalOpen(false)
+                  if (openVehicleAfterCreate) {
+                    const created =
+                      refreshedCustomers.find((c: any) => (c.name || '').trim().toLowerCase() === name.toLowerCase()) ||
+                      refreshedCustomers[refreshedCustomers.length - 1]
+                    setSelectedClientId(created?.id || null)
+                    setVehicleForm({ plate: '', make: '', model: '', year: '' })
+                    setVehicleFormError(null)
+                    setVehicleModalOpen(true)
+                  }
                 } catch (e) {
                   setClientFormError(e instanceof Error ? e.message : 'Error al crear cliente')
                 } finally {
@@ -327,6 +377,130 @@ export default function ClientsPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={vehicleModalOpen}
+        title="Nuevo Vehículo para Cliente"
+        onClose={() => {
+          if (creatingVehicle) return
+          setVehicleModalOpen(false)
+          setVehicleFormError(null)
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Placa (requerido)</label>
+            <Input value={vehicleForm.plate} onChange={(e) => setVehicleForm((s) => ({ ...s, plate: e.target.value }))} placeholder="ABC-1234" />
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 180, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Marca (opcional)</label>
+              <Input value={vehicleForm.make} onChange={(e) => setVehicleForm((s) => ({ ...s, make: e.target.value }))} placeholder="Toyota" />
+            </div>
+            <div style={{ flex: 1, minWidth: 180, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Modelo (opcional)</label>
+              <Input value={vehicleForm.model} onChange={(e) => setVehicleForm((s) => ({ ...s, model: e.target.value }))} placeholder="Corolla" />
+            </div>
+            <div style={{ width: 140, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Año</label>
+              <Input value={vehicleForm.year} onChange={(e) => setVehicleForm((s) => ({ ...s, year: e.target.value }))} placeholder="2020" />
+            </div>
+          </div>
+          {vehicleFormError ? (
+            <div
+              style={{
+                borderRadius: 12,
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                background: 'rgba(239, 68, 68, 0.12)',
+                padding: '10px 12px',
+                fontSize: 13,
+                color: '#FCA5A5',
+                fontWeight: 700,
+              }}
+            >
+              {vehicleFormError}
+            </div>
+          ) : null}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 4 }}>
+            <Button
+              variant="outline"
+              disabled={creatingVehicle}
+              onClick={() => {
+                if (creatingVehicle) return
+                setVehicleModalOpen(false)
+                setVehicleFormError(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={creatingVehicle}
+              onClick={async () => {
+                const t = token
+                if (!t || !selectedClientId) return
+                setVehicleFormError(null)
+                const plate = vehicleForm.plate.trim()
+                if (!plate) {
+                  setVehicleFormError('La placa es requerida.')
+                  return
+                }
+                setCreatingVehicle(true)
+                try {
+                  const year = vehicleForm.year.trim() ? Number(vehicleForm.year.trim()) : null
+                  await api.vehicles.create(t, {
+                    plate,
+                    make: vehicleForm.make.trim() || null,
+                    model: vehicleForm.model.trim() || null,
+                    year,
+                    customerId: selectedClientId,
+                  })
+                  const [customersRes, vehiclesRes] = await Promise.all([api.customers.list(t), api.vehicles.list(t)])
+                  setCustomers(customersRes.data || [])
+                  setVehicles(
+                    (vehiclesRes.data || []).map((v: any) => ({
+                      id: v.id,
+                      customerId: v.customerId ?? null,
+                    }))
+                  )
+                  setVehicleModalOpen(false)
+                } catch (e) {
+                  setVehicleFormError(e instanceof Error ? e.message : 'Error al crear vehículo')
+                } finally {
+                  setCreatingVehicle(false)
+                }
+              }}
+            >
+              {creatingVehicle ? 'Creando…' : 'Crear Vehículo'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={clientDetailsOpen}
+        title="Detalle de Cliente"
+        onClose={() => {
+          setClientDetailsOpen(false)
+        }}
+      >
+        {(() => {
+          const client = customers.find((c) => c.id === selectedClientId)
+          const count = selectedClientId ? vehicleCountByCustomerId.get(selectedClientId) || 0 : 0
+          if (!client) {
+            return <div style={{ fontSize: 13, opacity: 0.8 }}>Cliente no encontrado.</div>
+          }
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div><b>Nombre:</b> {client.name || '—'}</div>
+              <div><b>Tipo:</b> {client.type || '—'}</div>
+              <div><b>Email:</b> {client.email || '—'}</div>
+              <div><b>Teléfono:</b> {client.phone || '—'}</div>
+              <div><b>Documento:</b> {client.doc || '—'}</div>
+              <div><b>Vehículos asociados:</b> {count}</div>
+            </div>
+          )
+        })()}
       </Modal>
     </div>
   )

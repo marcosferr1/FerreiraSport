@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, CarFront } from 'lucide-react'
-import { Badge, Button, Card, CardSection, Input, Modal, Select } from '../components/inline/Primitives'
+import { Badge, Button, Card, CardSection, CircularProgress, Input, Modal, Select } from '../components/inline/Primitives'
 import { usePalette } from '../theme/ThemeProvider'
 import { useAuth } from '../auth/useAuth'
 import { api } from '../api/client'
@@ -28,6 +28,16 @@ export default function VehiclesPage() {
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false)
   const [creatingVehicle, setCreatingVehicle] = useState(false)
   const [vehicleFormError, setVehicleFormError] = useState<string | null>(null)
+  const [clientModalOpen, setClientModalOpen] = useState(false)
+  const [creatingInlineClient, setCreatingInlineClient] = useState(false)
+  const [inlineClientError, setInlineClientError] = useState<string | null>(null)
+  const [inlineClientForm, setInlineClientForm] = useState({
+    type: 'PARTICULAR',
+    name: '',
+    phone: '',
+    email: '',
+    doc: '',
+  })
   const [vehicleForm, setVehicleForm] = useState({
     plate: '',
     make: '',
@@ -181,8 +191,10 @@ export default function VehiclesPage() {
         </div>
         <Card style={{ borderColor: p.cardBorder }}>
           <CardSection style={{ padding: 18 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Cargando…</div>
-            <div style={{ fontSize: 13, opacity: 0.7 }}>Consultando la API.</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CircularProgress size={24} />
+              <div style={{ fontWeight: 900 }}>Cargando…</div>
+            </div>
           </CardSection>
         </Card>
       </div>
@@ -414,7 +426,22 @@ export default function VehiclesPage() {
               <Input value={vehicleForm.year} onChange={(e) => setVehicleForm((s) => ({ ...s, year: e.target.value }))} placeholder="2019" />
             </div>
             <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Cliente (opcional)</label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Cliente (opcional)</label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={creatingVehicle}
+                  onClick={() => {
+                    setInlineClientError(null)
+                    setInlineClientForm({ type: 'PARTICULAR', name: '', phone: '', email: '', doc: '' })
+                    setClientModalOpen(true)
+                  }}
+                >
+                  + Nuevo cliente
+                </Button>
+              </div>
               <Select value={vehicleForm.customerId} onChange={(e) => setVehicleForm((s) => ({ ...s, customerId: e.target.value }))}>
                 <option value="">Sin cliente</option>
                 {customers.map((c) => (
@@ -495,6 +522,135 @@ export default function VehiclesPage() {
               }}
             >
               {creatingVehicle ? 'Creando…' : 'Crear Vehículo'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={clientModalOpen}
+        title="Nuevo Cliente"
+        onClose={() => {
+          if (creatingInlineClient) return
+          setClientModalOpen(false)
+          setInlineClientError(null)
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Tipo</label>
+            <Select value={inlineClientForm.type} onChange={(e) => setInlineClientForm((s) => ({ ...s, type: e.target.value }))}>
+              <option value="PARTICULAR">PARTICULAR</option>
+              <option value="EMPRESA">EMPRESA</option>
+            </Select>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Nombre</label>
+            <Input
+              value={inlineClientForm.name}
+              onChange={(e) => setInlineClientForm((s) => ({ ...s, name: e.target.value }))}
+              placeholder="Ej: Juan Pérez"
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Teléfono</label>
+              <Input
+                value={inlineClientForm.phone}
+                onChange={(e) => setInlineClientForm((s) => ({ ...s, phone: e.target.value }))}
+                placeholder="+34 ..."
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Email</label>
+              <Input
+                value={inlineClientForm.email}
+                onChange={(e) => setInlineClientForm((s) => ({ ...s, email: e.target.value }))}
+                placeholder="cliente@email.com"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Documento (opcional)</label>
+            <Input
+              value={inlineClientForm.doc}
+              onChange={(e) => setInlineClientForm((s) => ({ ...s, doc: e.target.value }))}
+              placeholder="DNI/NIE/CIF"
+            />
+          </div>
+
+          {inlineClientError ? (
+            <div
+              style={{
+                borderRadius: 12,
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                background: 'rgba(239, 68, 68, 0.12)',
+                padding: '10px 12px',
+                fontSize: 13,
+                color: '#FCA5A5',
+                fontWeight: 700,
+              }}
+            >
+              {inlineClientError}
+            </div>
+          ) : null}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 4 }}>
+            <Button
+              variant="outline"
+              disabled={creatingInlineClient}
+              onClick={() => {
+                if (creatingInlineClient) return
+                setClientModalOpen(false)
+                setInlineClientError(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={creatingInlineClient}
+              onClick={async () => {
+                const t = token
+                if (!t) return
+                setInlineClientError(null)
+
+                const type = inlineClientForm.type.trim()
+                const name = inlineClientForm.name.trim()
+                if (!type || !name) {
+                  setInlineClientError('El tipo y el nombre son requeridos.')
+                  return
+                }
+
+                setCreatingInlineClient(true)
+                try {
+                  await api.customers.create(t, {
+                    type,
+                    name,
+                    phone: inlineClientForm.phone.trim() || null,
+                    email: inlineClientForm.email.trim() || null,
+                    doc: inlineClientForm.doc.trim() || null,
+                  })
+                  const customersRes = await api.customers.list(t)
+                  const refreshed = (customersRes.data || []).map((c: any) => ({ id: c.id, name: c.name }))
+                  setCustomers(refreshed)
+                  const created =
+                    refreshed.find((c: { id: string; name?: string | null }) => (c.name || '').trim().toLowerCase() === name.toLowerCase()) ||
+                    refreshed[refreshed.length - 1]
+                  if (created?.id) {
+                    setVehicleForm((s) => ({ ...s, customerId: created.id }))
+                  }
+                  setClientModalOpen(false)
+                } catch (e) {
+                  setInlineClientError(e instanceof Error ? e.message : 'Error al crear cliente')
+                } finally {
+                  setCreatingInlineClient(false)
+                }
+              }}
+            >
+              {creatingInlineClient ? 'Creando…' : 'Crear Cliente'}
             </Button>
           </div>
         </div>

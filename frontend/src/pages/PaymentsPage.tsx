@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Search, DollarSign, Wallet, CreditCard, Printer } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Card, CardSection, Input, Modal, Select, Textarea } from '../components/inline/Primitives'
+import { Badge, Button, Card, CardSection, CircularProgress, Input, Modal, Select, Textarea } from '../components/inline/Primitives'
 import { useAuth } from '../auth/useAuth'
 import { api } from '../api/client'
 import { usePalette } from '../theme/ThemeProvider'
@@ -457,8 +457,10 @@ export default function PaymentsPage() {
         </div>
         <Card style={{ borderColor: p.cardBorder }}>
           <CardSection style={{ padding: 18 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Cargando…</div>
-            <div style={{ fontSize: 13, opacity: 0.7 }}>Consultando la API.</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CircularProgress size={24} />
+              <div style={{ fontWeight: 900 }}>Cargando…</div>
+            </div>
           </CardSection>
         </Card>
       </div>
@@ -931,7 +933,10 @@ export default function PaymentsPage() {
             {!paymentForm.customerId.trim() || !paymentForm.vehicleId.trim() ? (
               <div style={{ fontSize: 13, opacity: 0.75 }}>Seleccioná cliente y vehículo para ver los presupuestos de ese par.</div>
             ) : loadingBudgetsModal ? (
-              <div style={{ fontSize: 13, opacity: 0.75 }}>Cargando presupuestos…</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CircularProgress size={18} />
+                <div style={{ fontSize: 13, opacity: 0.75 }}>Cargando presupuestos…</div>
+              </div>
             ) : budgetOptionsForModal.length === 0 ? (
               <div style={{ fontSize: 13, opacity: 0.75 }}>No hay presupuestos cargados para este cliente y este vehículo.</div>
             ) : (

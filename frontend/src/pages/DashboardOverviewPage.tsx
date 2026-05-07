@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Button, Badge, Card, CardSection, Input } from '../components/inline/Primitives'
+import { Button, Badge, Card, CardSection, CircularProgress, Input } from '../components/inline/Primitives'
 import { CheckCircle2, Clock3, CarFront, FileText, DollarSign, Wrench, CalendarRange } from 'lucide-react'
 import { usePalette } from '../theme/ThemeProvider'
 import { useAuth } from '../auth/useAuth'
@@ -396,7 +396,10 @@ export default function DashboardOverviewPage() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
               {loading ? (
-                <div style={{ fontSize: 13, opacity: 0.7 }}>Cargando…</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <CircularProgress size={20} />
+                  <div style={{ fontSize: 13, opacity: 0.85 }}>Cargando…</div>
+                </div>
               ) : actividadItems.length === 0 ? (
                 <div style={{ fontSize: 13, opacity: 0.7 }}>Sin movimientos en este periodo.</div>
               ) : (

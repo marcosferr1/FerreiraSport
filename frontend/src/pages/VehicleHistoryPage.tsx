@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Wrench, Package } from 'lucide-react'
-import { Button, Card, CardSection } from '../components/inline/Primitives'
+import { Button, Card, CardSection, CircularProgress } from '../components/inline/Primitives'
 import { useAuth } from '../auth/useAuth'
 import { api } from '../api/client'
 import { usePalette } from '../theme/ThemeProvider'
@@ -101,7 +101,16 @@ export default function VehicleHistoryPage() {
         <Button variant='outline' onClick={() => navigate('/app/vehiculos')}><ArrowLeft size={16} /> Volver</Button>
       </div>
 
-      {loading ? <Card><CardSection>Cargando historial…</CardSection></Card> : null}
+      {loading ? (
+        <Card>
+          <CardSection>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CircularProgress size={24} />
+              <div style={{ fontWeight: 900 }}>Cargando historial…</div>
+            </div>
+          </CardSection>
+        </Card>
+      ) : null}
       {error ? <Card style={{ borderColor: 'rgba(239,68,68,0.35)' }}><CardSection>{error}</CardSection></Card> : null}
 
       {!loading && !error && (
