@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const morgan = require('morgan');
 
 const authRoutes = require('./routes/auth.routes');
 const customersRoutes = require('./routes/customers.routes');
@@ -27,6 +28,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: '1mb' }));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
