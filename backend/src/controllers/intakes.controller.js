@@ -2,6 +2,13 @@ const db = require('../../models');
 
 const Intake = db.Intake;
 const ClinicalRecord = db.ClinicalRecord;
+const IntakeService = db.IntakeService;
+const IntakePart = db.IntakePart;
+
+function toNum(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 async function listIntakes(req, res, next) {
   try {
@@ -13,9 +20,30 @@ async function listIntakes(req, res, next) {
 
     const intakes = await Intake.findAll({
       where,
+      include: [
+        {
+          model: IntakeService,
+          attributes: ['id', 'laborPrice'],
+        },
+        {
+          model: IntakePart,
+          attributes: ['id', 'lineTotal'],
+        },
+      ],
       order: [['createdAt', 'DESC']],
     });
-    return res.json({ data: intakes });
+    const data = intakes.map((row) => {
+      const json = row.toJSON();
+      const laborTotal = (json.IntakeServices || []).reduce((acc, s) => acc + toNum(s.laborPrice, 0), 0);
+      const partsTotal = (json.IntakeParts || []).reduce((acc, p) => acc + toNum(p.lineTotal, 0), 0);
+      return {
+        ...json,
+        laborTotal,
+        partsTotal,
+        total: laborTotal + partsTotal,
+      };
+    });
+    return res.json({ data });
   } catch (e) {
     return next(e);
   }

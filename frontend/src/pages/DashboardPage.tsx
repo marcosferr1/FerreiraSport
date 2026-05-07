@@ -64,6 +64,11 @@ export default function DashboardPage() {
   const sidebarIsDark = mode !== 'light'
   const asideBg = sidebarIsDark ? '#0F172A' : '#FFFFFF'
   const asideText = sidebarIsDark ? '#E5E7EB' : p.text
+  const themeButtonOutlineStyle: React.CSSProperties = {
+    color: asideText,
+    borderColor: sidebarIsDark ? 'rgba(255,255,255,0.22)' : p.cardBorder,
+    background: 'transparent',
+  }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
@@ -93,17 +98,18 @@ export default function DashboardPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 6px 18px 6px' }}>
           <div
             style={{
-              width: 40,
-              height: 40,
+              width: 52,
+              height: 52,
               borderRadius: 14,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               background: sidebarIsDark ? 'rgba(2,6,23,0.35)' : 'rgba(37,99,235,0.08)',
               border: `1px solid ${sidebarIsDark ? 'rgba(255,255,255,0.10)' : 'rgba(37,99,235,0.18)'}`,
+              overflow: 'hidden',
             }}
           >
-            <Wrench size={18} />
+            <img src="/logo-ferreira-sport.png" alt="Ferreira Sport" style={{ width: 44, height: 44, objectFit: 'contain' }} />
           </div>
           <div>
             <div style={{ fontWeight: 800, fontSize: 22, lineHeight: '20px', fontFamily: "'Iceland', sans-serif", letterSpacing: 0.5 }}>
@@ -139,7 +145,36 @@ export default function DashboardPage() {
           })}
         </nav>
 
-        <div style={{ marginTop: 18, padding: '0 6px' }}>
+        <div style={{ marginTop: 18, padding: '0 6px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.75, paddingLeft: 2 }}>Tema</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+              <Button
+                variant={mode === 'light' ? 'primary' : 'outline'}
+                size="sm"
+                style={mode === 'light' ? undefined : themeButtonOutlineStyle}
+                onClick={() => setMode('light')}
+              >
+                Light
+              </Button>
+              <Button
+                variant={mode === 'dark' ? 'primary' : 'outline'}
+                size="sm"
+                style={mode === 'dark' ? undefined : themeButtonOutlineStyle}
+                onClick={() => setMode('dark')}
+              >
+                Dark
+              </Button>
+              <Button
+                variant={mode === 'hybrid' ? 'primary' : 'outline'}
+                size="sm"
+                style={mode === 'hybrid' ? undefined : themeButtonOutlineStyle}
+                onClick={() => setMode('hybrid')}
+              >
+                Hybrid
+              </Button>
+            </div>
+          </div>
           <button
             type="button"
             onClick={doLogout}
@@ -166,7 +201,7 @@ export default function DashboardPage() {
 
       <main style={{ flex: 1, background: p.background, color: p.text }}>
         <div style={{ padding: 24, boxSizing: 'border-box' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 10 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               {isMobile ? (
                 <Button variant="outline" size="sm" onClick={() => setMenuOpen((v) => !v)}>
@@ -174,24 +209,6 @@ export default function DashboardPage() {
                 </Button>
               ) : null}
               <div>
-              <div style={{ fontSize: 18, fontWeight: 900, lineHeight: '22px' }}>Sistema de Taller</div>
-              <div style={{ fontSize: 13, opacity: 0.7 }}>
-                Modo: <b>{mode}</b>
-              </div>
-            </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Button variant={mode === 'light' ? 'primary' : 'outline'} size="sm" onClick={() => setMode('light')}>
-                  Light
-                </Button>
-                <Button variant={mode === 'dark' ? 'primary' : 'outline'} size="sm" onClick={() => setMode('dark')}>
-                  Dark
-                </Button>
-                <Button variant={mode === 'hybrid' ? 'primary' : 'outline'} size="sm" onClick={() => setMode('hybrid')}>
-                  Hybrid
-                </Button>
               </div>
             </div>
           </div>

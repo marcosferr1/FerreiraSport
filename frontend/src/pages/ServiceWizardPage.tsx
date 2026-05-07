@@ -132,12 +132,15 @@ export default function ServiceWizardPage() {
 
     setCustomerId(prefill.customerId || '')
     setVehicleId(prefill.vehicleId || '')
+    setOdometer(prefill.odometer != null ? String(prefill.odometer) : '')
+    setReceivedAt(prefill.receivedAt || new Date().toISOString().slice(0, 16))
+    setIntakeNotes(prefill.intakeNotes || '')
     setServices(
       Array.isArray(prefill.services)
         ? prefill.services.map((s: any) => ({
             key: uid(),
-            serviceCatalogId: '',
-            isNew: true,
+            serviceCatalogId: s.serviceCatalogId || '',
+            isNew: s.isNew ?? !s.serviceCatalogId,
             name: s.name || '',
             laborPrice: String(s.laborPrice ?? '0'),
             notes: s.notes || '',
@@ -148,8 +151,8 @@ export default function ServiceWizardPage() {
       Array.isArray(prefill.parts)
         ? prefill.parts.map((x: any) => ({
             key: uid(),
-            partCatalogId: '',
-            isNew: true,
+            partCatalogId: x.partCatalogId || '',
+            isNew: x.isNew ?? !x.partCatalogId,
             name: x.name || '',
             brand: x.brand || '',
             sku: x.sku || '',
@@ -159,7 +162,7 @@ export default function ServiceWizardPage() {
           }))
         : []
     )
-    setStep(2)
+    setStep(5)
     setPrefillApplied(true)
   }, [location.state, prefillApplied])
 
@@ -225,7 +228,6 @@ export default function ServiceWizardPage() {
       }
     }
     if (current === 3 && services.length === 0) return 'Agregá al menos un servicio.'
-    if (current === 4 && parts.length === 0) return 'Agregá al menos un repuesto.'
     return null
   }
 

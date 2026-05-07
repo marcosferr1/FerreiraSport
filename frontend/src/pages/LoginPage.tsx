@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Wrench } from 'lucide-react'
 import { useAuth } from '../auth/useAuth'
 import { Button, Card, CardSection, Input } from '../components/inline/Primitives'
 
@@ -49,17 +48,18 @@ export default function LoginPage() {
         <div style={{ marginBottom: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <div
             style={{
-              width: 40,
-              height: 40,
+              width: 74,
+              height: 74,
               borderRadius: 14,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               background: 'rgba(255,255,255,0.08)',
               border: '1px solid rgba(255,255,255,0.12)',
+              overflow: 'hidden',
             }}
           >
-            <Wrench size={18} />
+            <img src="/logo-ferreira-sport.png" alt="Ferreira Sport" style={{ width: 66, height: 66, objectFit: 'contain' }} />
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1, fontFamily: "'Iceland', sans-serif", letterSpacing: 0.6 }}>

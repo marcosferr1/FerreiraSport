@@ -21,6 +21,8 @@ export default function VehiclesPage() {
   const navigate = useNavigate()
 
   const [query, setQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const pageSize = 10
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [customers, setCustomers] = useState<Array<{ id: string; name?: string | null }>>([])
   const [loading, setLoading] = useState(false)
@@ -51,6 +53,21 @@ export default function VehiclesPage() {
   const [selectedBrandId, setSelectedBrandId] = useState<string>('')
   /** '' | nombre del modelo del catálogo | '__manual__' (escribir modelo a mano) */
   const [modelSelectKey, setModelSelectKey] = useState<string>('')
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null)
+  const [deletingVehicle, setDeletingVehicle] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({
+    plate: '',
+    make: '',
+    model: '',
+    year: '',
+    customerId: '',
+  })
 
   useEffect(() => {
     const t = token
@@ -176,8 +193,22 @@ export default function VehiclesPage() {
       )
     })
   }, [vehicles, query, customerNameById])
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const pagedVehicles = useMemo(() => {
+    const safePage = Math.min(page, totalPages)
+    const from = (safePage - 1) * pageSize
+    return filtered.slice(from, from + pageSize)
+  }, [filtered, page, totalPages])
 
   const showEmpty = !loading && !error && filtered.length === 0
+
+  useEffect(() => {
+    setPage(1)
+  }, [query])
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
 
   if (loading) {
     return (
@@ -265,7 +296,7 @@ export default function VehiclesPage() {
             </CardSection>
           </Card>
         ) : (
-          filtered.map((v) => {
+          pagedVehicles.map((v) => {
             const owner = v.customerId ? customerNameById.get(v.customerId) : ''
             const hasOwner = Boolean(owner && owner.trim().length > 0)
             const title = formatVehicleTitle(v)
@@ -294,6 +325,36 @@ export default function VehiclesPage() {
                       <Badge label={hasOwner ? 'Con cliente' : 'Sin cliente'} tone={hasOwner ? 'success' : 'warning'} />
                       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                         <Button variant="outline" size="sm" onClick={() => navigate(`/app/vehiculos/${v.id}/historia`)}>Ver Historial</Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditError(null)
+                            setEditingVehicleId(v.id)
+                            setEditForm({
+                              plate: v.plate || '',
+                              make: v.make || '',
+                              model: v.model || '',
+                              year: v.year != null ? String(v.year) : '',
+                              customerId: v.customerId || '',
+                            })
+                            setEditModalOpen(true)
+                          }}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setDeleteError(null)
+                            setVehicleToDelete(v)
+                            setDeleteModalOpen(true)
+                          }}
+                          style={{ borderColor: 'rgba(239,68,68,0.5)', color: '#ef4444' }}
+                        >
+                          Eliminar
+                        </Button>
                         <Button variant="primary" size="sm" onClick={() => navigate('/app/servicios')}>Nuevo Servicio</Button>
                       </div>
                     </div>
@@ -304,6 +365,21 @@ export default function VehiclesPage() {
           })
         )}
       </div>
+      {!showEmpty ? (
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, opacity: 0.72 }}>
+            Página <b>{Math.min(page, totalPages)}</b> de <b>{totalPages}</b> · {filtered.length} vehículos
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              Anterior
+            </Button>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+              Siguiente
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <Modal
         open={vehicleModalOpen}
@@ -427,7 +503,7 @@ export default function VehiclesPage() {
             </div>
             <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Cliente (opcional)</label>
+                <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Cliente (seleccionar o crear)</label>
                 <Button
                   type="button"
                   variant="outline"
@@ -535,6 +611,8 @@ export default function VehiclesPage() {
           setClientModalOpen(false)
           setInlineClientError(null)
         }}
+        overlayStyle={{ background: 'rgba(2,6,23,0.78)', zIndex: 1200 }}
+        panelStyle={{ boxShadow: '0 24px 60px rgba(0,0,0,0.4)' }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -626,21 +704,20 @@ export default function VehiclesPage() {
 
                 setCreatingInlineClient(true)
                 try {
-                  await api.customers.create(t, {
+                  const createRes = await api.customers.create(t, {
                     type,
                     name,
                     phone: inlineClientForm.phone.trim() || null,
                     email: inlineClientForm.email.trim() || null,
                     doc: inlineClientForm.doc.trim() || null,
                   })
+                  const created = createRes.data as { id?: string }
                   const customersRes = await api.customers.list(t)
                   const refreshed = (customersRes.data || []).map((c: any) => ({ id: c.id, name: c.name }))
                   setCustomers(refreshed)
-                  const created =
-                    refreshed.find((c: { id: string; name?: string | null }) => (c.name || '').trim().toLowerCase() === name.toLowerCase()) ||
-                    refreshed[refreshed.length - 1]
-                  if (created?.id) {
-                    setVehicleForm((s) => ({ ...s, customerId: created.id }))
+                  const createdId = created?.id || ''
+                  if (createdId) {
+                    setVehicleForm((s) => ({ ...s, customerId: createdId }))
                   }
                   setClientModalOpen(false)
                 } catch (e) {
@@ -651,6 +728,173 @@ export default function VehiclesPage() {
               }}
             >
               {creatingInlineClient ? 'Creando…' : 'Crear Cliente'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={editModalOpen}
+        title="Editar Vehículo"
+        onClose={() => {
+          if (savingEdit) return
+          setEditModalOpen(false)
+          setEditError(null)
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Placa (requerido)</label>
+            <Input value={editForm.plate} onChange={(e) => setEditForm((s) => ({ ...s, plate: e.target.value }))} placeholder="ABC-1234" />
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Marca</label>
+              <Input value={editForm.make} onChange={(e) => setEditForm((s) => ({ ...s, make: e.target.value }))} placeholder="Toyota" />
+            </div>
+            <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Modelo</label>
+              <Input value={editForm.model} onChange={(e) => setEditForm((s) => ({ ...s, model: e.target.value }))} placeholder="Corolla" />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Año</label>
+              <Input value={editForm.year} onChange={(e) => setEditForm((s) => ({ ...s, year: e.target.value }))} placeholder="2019" />
+            </div>
+            <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Cliente</label>
+              <Select value={editForm.customerId} onChange={(e) => setEditForm((s) => ({ ...s, customerId: e.target.value }))}>
+                <option value="">Sin cliente</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name || 'Cliente'}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          {editError ? (
+            <div
+              style={{
+                borderRadius: 12,
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                background: 'rgba(239, 68, 68, 0.12)',
+                padding: '10px 12px',
+                fontSize: 13,
+                color: '#FCA5A5',
+                fontWeight: 700,
+              }}
+            >
+              {editError}
+            </div>
+          ) : null}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+            <Button variant="outline" disabled={savingEdit} onClick={() => setEditModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={savingEdit}
+              onClick={async () => {
+                const t = token
+                if (!t || !editingVehicleId) return
+                setEditError(null)
+                const plate = editForm.plate.trim()
+                if (!plate) {
+                  setEditError('La placa es requerida.')
+                  return
+                }
+                setSavingEdit(true)
+                try {
+                  const year = editForm.year.trim() ? Number(editForm.year.trim()) : null
+                  await api.vehicles.update(t, editingVehicleId, {
+                    plate,
+                    make: editForm.make.trim() || null,
+                    model: editForm.model.trim() || null,
+                    year,
+                    customerId: editForm.customerId || null,
+                  })
+                  const [vehiclesRes, customersRes] = await Promise.all([api.vehicles.list(t), api.customers.list(t)])
+                  setVehicles(vehiclesRes.data || [])
+                  setCustomers((customersRes.data || []).map((c: any) => ({ id: c.id, name: c.name })))
+                  setEditModalOpen(false)
+                } catch (e) {
+                  setEditError(e instanceof Error ? e.message : 'No se pudo editar el vehículo')
+                } finally {
+                  setSavingEdit(false)
+                }
+              }}
+            >
+              {savingEdit ? 'Guardando…' : 'Guardar cambios'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={deleteModalOpen}
+        title="Eliminar vehículo"
+        onClose={() => {
+          if (deletingVehicle) return
+          setDeleteModalOpen(false)
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ fontSize: 13, opacity: 0.8 }}>
+            {vehicleToDelete
+              ? `¿Seguro que querés eliminar el vehículo ${vehicleToDelete.plate}?`
+              : '¿Seguro que querés eliminar este vehículo?'}
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            Esta acción borra también en cascada el historial relacionado (ingresos, presupuestos, pagos y registros asociados). No se puede deshacer.
+          </div>
+          {deleteError ? (
+            <div
+              style={{
+                borderRadius: 12,
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                background: 'rgba(239, 68, 68, 0.12)',
+                padding: '10px 12px',
+                fontSize: 13,
+                color: '#FCA5A5',
+                fontWeight: 700,
+              }}
+            >
+              {deleteError}
+            </div>
+          ) : null}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+            <Button variant="outline" disabled={deletingVehicle} onClick={() => setDeleteModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={deletingVehicle}
+              style={{ background: '#dc2626', color: '#fff' }}
+              onClick={async () => {
+                const t = token
+                const v = vehicleToDelete
+                if (!t || !v) return
+                setDeleteError(null)
+                setDeletingVehicle(true)
+                try {
+                  await api.vehicles.remove(t, v.id, { cascade: true })
+                  const [vehiclesRes, customersRes] = await Promise.all([api.vehicles.list(t), api.customers.list(t)])
+                  setVehicles(vehiclesRes.data || [])
+                  setCustomers((customersRes.data || []).map((c: any) => ({ id: c.id, name: c.name })))
+                  setDeleteModalOpen(false)
+                  setVehicleToDelete(null)
+                } catch (e) {
+                  setDeleteError(e instanceof Error ? e.message : 'No se pudo eliminar el vehículo')
+                } finally {
+                  setDeletingVehicle(false)
+                }
+              }}
+            >
+              {deletingVehicle ? 'Eliminando…' : 'Eliminar vehículo'}
             </Button>
           </div>
         </div>

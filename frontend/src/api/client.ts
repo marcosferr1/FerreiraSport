@@ -59,8 +59,18 @@ export const api = {
       const qs = buildQuery({ type: params?.type, q: params?.q });
       return apiAuthFetch(token, `/customers${qs}`);
     },
+    get: (token: string, id: string) => apiAuthFetch(token, `/customers/${encodeURIComponent(id)}`),
     create: (token: string, body: { type?: string | null; name?: string | null; phone?: string | null; email?: string | null; doc?: string | null }) =>
       apiAuthFetch(token, '/customers', { method: 'POST', body: JSON.stringify(body) }),
+    update: (
+      token: string,
+      id: string,
+      body: { type?: string | null; name?: string | null; phone?: string | null; email?: string | null; doc?: string | null }
+    ) => apiAuthFetch(token, `/customers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    remove: (token: string, id: string, options?: { deleteVehicles?: boolean }) => {
+      const qs = buildQuery({ deleteVehicles: options?.deleteVehicles ? 'true' : undefined });
+      return apiAuthFetch(token, `/customers/${encodeURIComponent(id)}${qs}`, { method: 'DELETE' });
+    },
   },
 
   vehicles: {
@@ -68,8 +78,18 @@ export const api = {
       const qs = buildQuery({ customerId: params?.customerId, q: params?.q });
       return apiAuthFetch(token, `/vehicles${qs}`);
     },
+    get: (token: string, id: string) => apiAuthFetch(token, `/vehicles/${encodeURIComponent(id)}`),
     create: (token: string, body: { plate: string; make?: string | null; model?: string | null; year?: number | null; customerId?: string | null }) =>
       apiAuthFetch(token, '/vehicles', { method: 'POST', body: JSON.stringify(body) }),
+    update: (
+      token: string,
+      id: string,
+      body: { plate?: string | null; make?: string | null; model?: string | null; year?: number | null; customerId?: string | null }
+    ) => apiAuthFetch(token, `/vehicles/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    remove: (token: string, id: string, options?: { cascade?: boolean }) => {
+      const qs = buildQuery({ cascade: options?.cascade ? 'true' : undefined });
+      return apiAuthFetch(token, `/vehicles/${encodeURIComponent(id)}${qs}`, { method: 'DELETE' });
+    },
     history: (token: string, vehicleId: string) =>
       apiAuthFetch(token, `/vehicles/${encodeURIComponent(vehicleId)}/history`),
   },
@@ -183,6 +203,17 @@ export const api = {
         lines?: Array<{ description: string; qty?: number; unitPrice?: number }>
       }
     ) => apiAuthFetch(token, '/budgets', { method: 'POST', body: JSON.stringify(body) }),
+  },
+
+  intakes: {
+    list: (token: string, params?: { customerId?: string; vehicleId?: string; status?: string }) => {
+      const qs = buildQuery({
+        customerId: params?.customerId,
+        vehicleId: params?.vehicleId,
+        status: params?.status,
+      });
+      return apiAuthFetch(token, `/intakes${qs}`);
+    },
   },
 
   payments: {

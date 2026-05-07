@@ -7,6 +7,7 @@ const IntakeService = db.IntakeService;
 const IntakePart = db.IntakePart;
 const Budget = db.Budget;
 const BudgetLine = db.BudgetLine;
+const Payment = db.Payment;
 
 async function listVehicles(req, res, next) {
   try {
@@ -141,5 +142,78 @@ async function updateVehicle(req, res, next) {
   }
 }
 
-module.exports = { listVehicles, createVehicle, getVehicle, getVehicleHistory, updateVehicle };
+async function deleteVehicle(req, res, next) {
+  const tx = await db.sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const cascade = String(req.query.cascade || '').toLowerCase() === 'true';
+    const vehicle = await Vehicle.findByPk(id, { transaction: tx });
+    if (!vehicle) {
+      await tx.rollback();
+      return res.status(404).json({ error: 'Vehículo no encontrado' });
+    }
+
+    const [intakesCount, budgetsCount, paymentsCount] = await Promise.all([
+      Intake.count({ where: { vehicleId: id }, transaction: tx }),
+      Budget.count({ where: { vehicleId: id }, transaction: tx }),
+      Payment.count({ where: { vehicleId: id }, transaction: tx }),
+    ]);
+    const linked = intakesCount + budgetsCount + paymentsCount;
+    if (linked > 0) {
+      if (!cascade) {
+        await tx.rollback();
+        return res.status(409).json({
+          error:
+            'No se puede borrar el vehículo porque tiene historial relacionado (ingresos, presupuestos o pagos).',
+        });
+      }
+
+      const Op = db.Sequelize.Op;
+      const intakes = await Intake.findAll({
+        where: { vehicleId: id },
+        attributes: ['id'],
+        transaction: tx,
+      });
+      const intakeIds = intakes.map((x) => x.id);
+      const budgets = await Budget.findAll({
+        where: intakeIds.length > 0 ? { [Op.or]: [{ vehicleId: id }, { intakeId: intakeIds }] } : { vehicleId: id },
+        attributes: ['id'],
+        transaction: tx,
+      });
+      const budgetIds = budgets.map((x) => x.id);
+
+      const paymentOr = [{ vehicleId: id }];
+      if (intakeIds.length > 0) paymentOr.push({ intakeId: intakeIds });
+      if (budgetIds.length > 0) paymentOr.push({ budgetId: budgetIds });
+      await Payment.destroy({ where: { [Op.or]: paymentOr }, transaction: tx });
+
+      if (budgetIds.length > 0) {
+        await db.BudgetAuditLog.destroy({ where: { budgetId: budgetIds }, transaction: tx });
+        await BudgetLine.destroy({ where: { budgetId: budgetIds }, transaction: tx });
+        await Budget.destroy({ where: { id: budgetIds }, transaction: tx });
+      }
+
+      if (intakeIds.length > 0) {
+        await ClinicalRecord.destroy({ where: { intakeId: intakeIds }, transaction: tx });
+        await IntakeService.destroy({ where: { intakeId: intakeIds }, transaction: tx });
+        await IntakePart.destroy({ where: { intakeId: intakeIds }, transaction: tx });
+        await Intake.destroy({ where: { id: intakeIds }, transaction: tx });
+      }
+    }
+
+    await Vehicle.destroy({ where: { id }, transaction: tx });
+    await tx.commit();
+    return res.json({
+      data: {
+        deletedVehicleId: id,
+        cascadeApplied: linked > 0 && cascade,
+      },
+    });
+  } catch (e) {
+    await tx.rollback();
+    return next(e);
+  }
+}
+
+module.exports = { listVehicles, createVehicle, getVehicle, getVehicleHistory, updateVehicle, deleteVehicle };
 

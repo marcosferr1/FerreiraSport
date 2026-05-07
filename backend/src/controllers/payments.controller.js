@@ -1,5 +1,4 @@
 const db = require('../../models');
-
 const Payment = db.Payment;
 const { Op } = db.Sequelize;
 
@@ -27,6 +26,7 @@ function validatePaymentBody(body) {
   if (body.amount == null) return 'amount requerido';
   if (!body.method) return 'method requerido';
   if (!body.paidAt) return 'paidAt requerido';
+  if (!body.intakeId) return 'intakeId requerido (el pago debe estar vinculado a un servicio)';
   const amount = Number(body.amount);
   if (!Number.isFinite(amount) || amount < 0) return 'amount debe ser >= 0';
   const paidAt = new Date(body.paidAt);

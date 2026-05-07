@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Search, DollarSign, Wallet, CreditCard, Printer } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { jsPDF } from 'jspdf'
 import { Badge, Button, Card, CardSection, CircularProgress, Input, Modal, Select, Textarea } from '../components/inline/Primitives'
 import { useAuth } from '../auth/useAuth'
 import { api } from '../api/client'
@@ -11,6 +12,7 @@ type Payment = {
   amount: string | number
   method: string
   paidAt: string
+  intakeId?: string | null
   customerId?: string | null
   vehicleId?: string | null
   budgetId?: string | null
@@ -18,21 +20,26 @@ type Payment = {
   reference?: string | null
 }
 
+type IntakeForSelect = {
+  id: string
+  customerId?: string | null
+  vehicleId?: string | null
+  status?: string
+  receivedAt?: string
+  odometer?: number | string | null
+  laborTotal?: number | string | null
+  partsTotal?: number | string | null
+  total?: number | string | null
+}
+
 type PaymentPrefillState = {
-  budgetId?: string
+  intakeId?: string
   customerId?: string | null
   vehicleId?: string | null
   suggestedAmount?: number | null
 }
 
 type MethodTab = 'TODOS' | 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA' | 'OTRO'
-
-type BudgetForSelect = {
-  id: string
-  status?: string
-  createdAt?: string
-  total?: string | number
-}
 
 function money(n: number) {
   return n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })
@@ -57,95 +64,140 @@ function formatDateTime(value: unknown) {
   return d.toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' })
 }
 
-function sanitize(s: string) {
-  return String(s || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
+const BUSINESS_NAME = 'FERREIRA SPORT'
+const BUSINESS_TAGLINE = 'Mecanica integral y diagnostico automotor'
+const BUSINESS_EXPERIENCE = '35 años de experiencia'
+const BUSINESS_SERVICES = 'Diagnostico electronico • Clonado de llaves • Mecanica integral'
+const BUSINESS_OWNER = 'Santiago Ferreira'
+const BUSINESS_PHONE = '3576 15414921'
+const BUSINESS_EMAIL = 'santiagoferreira520@gmail.com'
+const BUSINESS_ADDRESS = 'Rivadavia 1126, Arroyito, Cordoba, Argentina'
+
+async function loadImageAsDataUrl(src: string): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('No se pudo procesar el logo para PDF.'))
+        return
+      }
+      ctx.drawImage(img, 0, 0)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    img.onerror = () => reject(new Error('No se pudo cargar el logo para PDF.'))
+    img.src = src
+  })
 }
 
-function buildPaymentReceiptHtml(p: Payment, customerLabel: string, vehicleLabel: string) {
+function drawBusinessFooter(doc: jsPDF) {
+  const pageH = doc.internal.pageSize.getHeight()
+  const pageW = doc.internal.pageSize.getWidth()
+  const left = 14
+  const right = pageW - 14
+  const top = pageH - 27
+  const middle = left + (right - left) * 0.58
+
+  doc.setDrawColor(210, 214, 220)
+  doc.line(left, top, right, top)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.5)
+  doc.setTextColor(26, 86, 219)
+  doc.text(BUSINESS_NAME, left, top + 5)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.8)
+  doc.setTextColor(70, 70, 70)
+  doc.text(BUSINESS_TAGLINE, left, top + 9.4)
+  doc.text(BUSINESS_EXPERIENCE, left, top + 13.7)
+  doc.text(BUSINESS_SERVICES, left, top + 18)
+
+  doc.setFontSize(9)
+  doc.setTextColor(30, 30, 30)
+  doc.text(`${BUSINESS_OWNER} • Tel: ${BUSINESS_PHONE}`, middle, top + 5)
+  doc.text(BUSINESS_EMAIL, middle, top + 9.4)
+  doc.text(BUSINESS_ADDRESS, middle, top + 13.7)
+}
+
+async function downloadPaymentReceiptPdf(p: Payment, customerLabel: string, vehicleLabel: string) {
   const code = p.reference ? String(p.reference).trim() : `PAG-${shortId(p.id)}`
   const amount = toNumber(p.amount)
   const method = String(p.method || '—').trim()
   const budgetRef = p.budgetId ? shortId(p.budgetId) : '—'
   const note = (p.note && String(p.note).trim()) || '—'
 
-  const rows = [
-    ['Comprobante', sanitize(code)],
-    ['Fecha y hora de cobro', sanitize(formatDateTime(p.paidAt))],
-    ['Cliente', sanitize(customerLabel)],
-    ['Vehículo', sanitize(vehicleLabel)],
-    ['Método de pago', sanitize(method)],
-    ['Referencia', p.reference ? sanitize(String(p.reference)) : '—'],
-    ['Presupuesto vinculado', budgetRef === '—' ? '—' : sanitize(budgetRef)],
-    ['Notas', note === '—' ? '—' : sanitize(note)],
+  const rows: Array<[string, string]> = [
+    ['Comprobante', code],
+    ['Fecha y hora de cobro', formatDateTime(p.paidAt)],
+    ['Cliente', customerLabel],
+    ['Vehículo', vehicleLabel],
+    ['Método de pago', method],
+    ['Referencia', p.reference ? String(p.reference) : '—'],
+    ['Presupuesto vinculado', budgetRef],
+    ['Notas', note],
   ]
-    .map(([k, v]) => `<tr><th>${sanitize(String(k))}</th><td>${v}</td></tr>`)
-    .join('')
 
-  const logoUrl = `${window.location.origin}/ferreira-logo.png`
-  return `<!doctype html><html><head><meta charset="utf-8" /><title>Recibo ${sanitize(code)}</title><style>
-body{font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:760px;margin:0 auto;color:#111}
-.head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px}
-.logo{width:200px;max-width:40vw;object-fit:contain}
-h1{margin:0 0 6px;font-size:22px}
-.sub{color:#555;font-size:13px;margin-bottom:18px}
-table{width:100%;border-collapse:collapse;margin-top:8px}
-th,td{border:1px solid #ddd;padding:10px 12px;text-align:left;vertical-align:top}
-th{background:#f3f4f6;width:38%;font-weight:700}
-.total{margin-top:22px;padding:14px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;font-size:18px;font-weight:700;text-align:right}
-.foot{color:#6b7280;font-size:11px;margin-top:20px}
-</style></head><body>
-<div class="head"><div><h1>Recibo de pago</h1><div class="sub">Resumen del cobro registrado en el sistema de taller (no constituye factura fiscal).</div></div><img src="${logoUrl}" class="logo" alt="FERREIRA SPORT" /></div>
-<table><tbody>${rows}</tbody></table>
-<div class="total">Total abonado: ${sanitize(money(amount))}</div>
-<p class="foot">ID interno: ${sanitize(p.id)}</p>
-</body></html>`
-}
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const pageW = doc.internal.pageSize.getWidth()
+  const margin = 14
+  const usableW = pageW - margin * 2
+  let y = 16
 
-function printPaymentReceiptHtml(html: string) {
-  const iframe = document.createElement('iframe')
-  iframe.style.position = 'fixed'
-  iframe.style.right = '0'
-  iframe.style.bottom = '0'
-  iframe.style.width = '0'
-  iframe.style.height = '0'
-  iframe.style.border = '0'
-  iframe.setAttribute('aria-hidden', 'true')
-  document.body.appendChild(iframe)
-
-  const frameDoc = iframe.contentWindow?.document
-  if (!frameDoc || !iframe.contentWindow) {
-    document.body.removeChild(iframe)
-    return false
+  try {
+    const logoDataUrl = await loadImageAsDataUrl(`${window.location.origin}/logo-ferreira-sport.png`)
+    doc.addImage(logoDataUrl, 'PNG', pageW - 58, 10, 44, 20)
+  } catch {
+    // Si falla el logo, no frenamos la exportación.
   }
 
-  frameDoc.open()
-  frameDoc.write(html)
-  frameDoc.close()
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(17)
+  doc.text('Recibo de pago', margin, y)
+  y += 6
 
-  window.setTimeout(() => {
-    iframe.contentWindow?.focus()
-    iframe.contentWindow?.print()
-    window.setTimeout(() => {
-      if (document.body.contains(iframe)) document.body.removeChild(iframe)
-    }, 1200)
-  }, 150)
-  return true
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(90, 90, 90)
+  doc.setFontSize(10.5)
+  const subtitle = 'Resumen del cobro registrado en el sistema de taller (no constituye factura fiscal).'
+  const subtitleLines = doc.splitTextToSize(subtitle, usableW - 48)
+  doc.text(subtitleLines, margin, y)
+  y += subtitleLines.length * 4.7 + 5
+
+  doc.setTextColor(20, 20, 20)
+  doc.setFontSize(10.5)
+  rows.forEach(([label, value]) => {
+    const cellY = y
+    doc.setDrawColor(220)
+    doc.rect(margin, cellY - 3.8, 62, 8.5)
+    doc.rect(margin + 62, cellY - 3.8, usableW - 62, 8.5)
+    doc.setFont('helvetica', 'bold')
+    doc.text(label, margin + 2, cellY + 1.8)
+    doc.setFont('helvetica', 'normal')
+    const text = doc.splitTextToSize(value || '—', usableW - 66)
+    doc.text(text, margin + 64, cellY + 1.8)
+    y += Math.max(8.5, text.length * 4.4 + 3)
+  })
+
+  y += 4
+  doc.setFillColor(249, 250, 251)
+  doc.setDrawColor(229, 231, 235)
+  doc.roundedRect(margin, y - 2, usableW, 12, 1.6, 1.6)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.text(`Total abonado: ${money(amount)}`, pageW - margin, y + 5.6, { align: 'right' })
+
+  drawBusinessFooter(doc)
+  doc.save(`Recibo-${code}.pdf`)
 }
+
 
 function shortId(id: string) {
   return id.length > 8 ? id.slice(0, 8).toUpperCase() : id.toUpperCase()
-}
-
-function formatBudgetOptionLabel(b: BudgetForSelect) {
-  const total = b.total == null ? 0 : Number(b.total)
-  const mt = Number.isFinite(total) ? total : 0
-  const st = b.status ?? '—'
-  return `${shortId(b.id)} · ${formatDate(b.createdAt)} · ${st} · ${money(mt)}`
 }
 
 function normalizeMethod(method: string) {
@@ -174,6 +226,7 @@ function methodTabLabel(tab: MethodTab) {
       return 'Todos'
   }
 }
+
 
 function segmentBtnStyle(active: boolean) {
   return {
@@ -204,6 +257,8 @@ export default function PaymentsPage() {
   }, [searchInput])
 
   const [tab, setTab] = useState<MethodTab>('TODOS')
+  const [page, setPage] = useState(1)
+  const pageSize = 10
   const [listFilterCustomerId, setListFilterCustomerId] = useState('')
   const [listFilterFrom, setListFilterFrom] = useState('')
   const [listFilterTo, setListFilterTo] = useState('')
@@ -224,8 +279,8 @@ export default function PaymentsPage() {
   const [creatingInlineCustomer, setCreatingInlineCustomer] = useState(false)
   const [creatingInlineVehicle, setCreatingInlineVehicle] = useState(false)
 
-  const [budgetOptionsForModal, setBudgetOptionsForModal] = useState<BudgetForSelect[]>([])
-  const [loadingBudgetsModal, setLoadingBudgetsModal] = useState(false)
+  const [intakeOptionsForModal, setIntakeOptionsForModal] = useState<IntakeForSelect[]>([])
+  const [loadingIntakesModal, setLoadingIntakesModal] = useState(false)
 
   const [newCustomer, setNewCustomer] = useState({
     type: 'PARTICULAR',
@@ -245,9 +300,9 @@ export default function PaymentsPage() {
     method: 'EFECTIVO',
     amount: '',
     paidAt: new Date().toISOString().slice(0, 10),
+    intakeId: '',
     customerId: '',
     vehicleId: '',
-    budgetId: '',
     note: '',
     reference: '',
   })
@@ -318,7 +373,7 @@ export default function PaymentsPage() {
     const st = location.state as PaymentPrefillState | null | undefined
     if (!st || typeof st !== 'object') return
     const has =
-      Boolean(st.budgetId) ||
+      Boolean(st.intakeId) ||
       Boolean(st.customerId) ||
       Boolean(st.vehicleId) ||
       (st.suggestedAmount != null && Number.isFinite(Number(st.suggestedAmount)))
@@ -326,7 +381,7 @@ export default function PaymentsPage() {
 
     setPaymentForm((prev) => ({
       ...prev,
-      budgetId: st.budgetId ?? prev.budgetId,
+      intakeId: st.intakeId ?? prev.intakeId,
       customerId: st.customerId ? String(st.customerId) : prev.customerId,
       vehicleId: st.vehicleId ? String(st.vehicleId) : prev.vehicleId,
       amount:
@@ -385,6 +440,20 @@ export default function PaymentsPage() {
       return [code, customer, vehicle, method, note].some((x) => x.includes(qForLocal))
     })
   }, [filtered, qForLocal, customerNameById, vehicleLabelById])
+  const totalPages = Math.max(1, Math.ceil(rowsToShow.length / pageSize))
+  const pagedRows = useMemo(() => {
+    const safePage = Math.min(page, totalPages)
+    const from = (safePage - 1) * pageSize
+    return rowsToShow.slice(from, from + pageSize)
+  }, [rowsToShow, page, totalPages])
+
+  useEffect(() => {
+    setPage(1)
+  }, [tab, listFilterCustomerId, listFilterFrom, listFilterTo, debouncedQ])
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
 
   const totalCollected = useMemo(() => rowsToShow.reduce((acc, pmt) => acc + toNumber(pmt.amount), 0), [rowsToShow])
   const txCount = rowsToShow.length
@@ -399,26 +468,26 @@ export default function PaymentsPage() {
     if (!token || !paymentModalOpen) return
     const cid = paymentForm.customerId.trim()
     const vid = paymentForm.vehicleId.trim()
-    if (!cid || !vid) {
-      setBudgetOptionsForModal([])
+    if (!cid) {
+      setIntakeOptionsForModal([])
       return
     }
     let cancelled = false
     ;(async () => {
-      setLoadingBudgetsModal(true)
+      setLoadingIntakesModal(true)
       try {
-        const res = await api.budgets.list(token, { customerId: cid, vehicleId: vid })
+        const res = await api.intakes.list(token, { customerId: cid, vehicleId: vid || undefined })
         if (cancelled) return
-        const list = (res.data || []) as BudgetForSelect[]
-        setBudgetOptionsForModal(list)
+        const list = (res.data || []) as IntakeForSelect[]
+        setIntakeOptionsForModal(list)
         setPaymentForm((s) => {
-          if (!s.budgetId) return s
-          return list.some((b) => b.id === s.budgetId) ? s : { ...s, budgetId: '' }
+          if (!s.intakeId) return s
+          return list.some((x) => x.id === s.intakeId) ? s : { ...s, intakeId: '' }
         })
       } catch {
-        if (!cancelled) setBudgetOptionsForModal([])
+        if (!cancelled) setIntakeOptionsForModal([])
       } finally {
-        if (!cancelled) setLoadingBudgetsModal(false)
+        if (!cancelled) setLoadingIntakesModal(false)
       }
     })()
     return () => {
@@ -436,12 +505,13 @@ export default function PaymentsPage() {
       method: 'EFECTIVO',
       amount: '',
       paidAt: new Date().toISOString().slice(0, 10),
+      intakeId: '',
       customerId: '',
       vehicleId: '',
-      budgetId: '',
       note: '',
       reference: '',
     })
+    setIntakeOptionsForModal([])
     setPaymentModalOpen(true)
   }
 
@@ -628,7 +698,7 @@ export default function PaymentsPage() {
             </CardSection>
           </Card>
         ) : (
-          rowsToShow.map((item) => {
+          pagedRows.map((item) => {
             const code = item.reference ? item.reference : `PAG-${shortId(item.id)}`
             const customer = item.customerId ? customerNameById.get(item.customerId) || '—' : '—'
             const vehicle = item.vehicleId ? vehicleLabelById.get(item.vehicleId) || '—' : '—'
@@ -678,18 +748,19 @@ export default function PaymentsPage() {
                       </Button>
                       <Button
                         size="sm"
-                        onClick={() => {
+                        onClick={async () => {
                           setReceiptPrintError(null)
                           const c = item.customerId ? customerNameById.get(item.customerId) || '—' : '—'
                           const v = item.vehicleId ? vehicleLabelById.get(item.vehicleId) || '—' : '—'
-                          const html = buildPaymentReceiptHtml(item, c, v)
-                          if (!printPaymentReceiptHtml(html)) {
+                          try {
+                            await downloadPaymentReceiptPdf(item, c, v)
+                          } catch (e) {
                             setReceiptPayment(item)
-                            setReceiptPrintError('No se pudo abrir el diálogo de impresión.')
+                            setReceiptPrintError(e instanceof Error ? e.message : 'No se pudo generar el PDF.')
                           }
                         }}
                       >
-                        <Printer size={14} /> PDF
+                        <Printer size={14} /> Recibo PDF
                       </Button>
                     </div>
                   </div>
@@ -699,6 +770,26 @@ export default function PaymentsPage() {
           })
         )}
       </div>
+      {!showEmpty ? (
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, opacity: 0.72 }}>
+            Página <b>{Math.min(page, totalPages)}</b> de <b>{totalPages}</b> · {rowsToShow.length} pagos
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <Modal
         open={paymentModalOpen}
@@ -707,24 +798,9 @@ export default function PaymentsPage() {
           if (creatingPayment || creatingInlineCustomer || creatingInlineVehicle) return
           setPaymentModalOpen(false)
           setPaymentFormError(null)
-          setBudgetOptionsForModal([])
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {paymentForm.budgetId ? (
-            <div
-              style={{
-                fontSize: 13,
-                padding: '10px 12px',
-                borderRadius: 10,
-                border: '1px solid rgba(37,99,235,0.25)',
-                background: 'rgba(37,99,235,0.08)',
-              }}
-            >
-              Vinculado a presupuesto <b>{shortId(paymentForm.budgetId)}</b>. Podés editar cualquier campo antes de guardar.
-            </div>
-          ) : null}
-
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Método</label>
@@ -772,7 +848,7 @@ export default function PaymentsPage() {
                     ...s,
                     customerId: e.target.value,
                     vehicleId: '',
-                    budgetId: '',
+                    intakeId: '',
                   }))
                 }
               >
@@ -822,7 +898,7 @@ export default function PaymentsPage() {
                       const row = res.data as { id: string; name?: string | null }
                       if (!row?.id) throw new Error('Respuesta sin id de cliente')
                       setCustomers((prev) => [...prev, row])
-                      setPaymentForm((s) => ({ ...s, customerId: row.id, vehicleId: '', budgetId: '' }))
+                      setPaymentForm((s) => ({ ...s, customerId: row.id, vehicleId: '', intakeId: '' }))
                       setCustomerMode('existing')
                       setNewCustomer({ type: 'PARTICULAR', name: '', phone: '', email: '', doc: '' })
                     } catch (e) {
@@ -836,6 +912,58 @@ export default function PaymentsPage() {
                 </Button>
               </div>
             )}
+          </div>
+
+          <div style={{ borderTop: `1px solid ${p.cardBorder}`, paddingTop: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Servicio (obligatorio)</div>
+            {!paymentForm.customerId.trim() ? (
+              <div style={{ fontSize: 13, opacity: 0.75 }}>Seleccioná cliente para ver sus servicios registrados.</div>
+            ) : loadingIntakesModal ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CircularProgress size={18} />
+                <div style={{ fontSize: 13, opacity: 0.75 }}>Cargando servicios…</div>
+              </div>
+            ) : intakeOptionsForModal.length === 0 ? (
+              <div style={{ fontSize: 13, opacity: 0.75 }}>
+                No hay servicios para este cliente y vehículo. Creá uno en la sección Servicios.
+              </div>
+            ) : (
+              <Select
+                value={intakeOptionsForModal.some((x) => x.id === paymentForm.intakeId) ? paymentForm.intakeId : ''}
+                onChange={(e) =>
+                  setPaymentForm((s) => {
+                    const intakeId = e.target.value
+                    const selected = intakeOptionsForModal.find((x) => x.id === intakeId)
+                    const nextVehicleId = selected?.vehicleId ? String(selected.vehicleId) : s.vehicleId
+                    const totalNumber = Number(selected?.total)
+                    return {
+                      ...s,
+                      intakeId,
+                      vehicleId: nextVehicleId,
+                      amount: Number.isFinite(totalNumber) ? String(totalNumber) : s.amount,
+                    }
+                  })
+                }
+              >
+                <option value="">Seleccionar servicio</option>
+                {intakeOptionsForModal.map((x) => {
+                  const vehicle = vehicles.find((v) => v.id === x.vehicleId)
+                  const modelo = [vehicle?.make, vehicle?.model].filter(Boolean).join(' ').trim() || 'Sin modelo'
+                  const patente = vehicle?.plate || 'Sin patente'
+                  const precio = money(Number(x.total) || 0)
+                  return (
+                    <option key={x.id} value={x.id}>
+                      {`${modelo} - ${patente} - ${precio}`}
+                    </option>
+                  )
+                })}
+              </Select>
+            )}
+            {paymentForm.intakeId ? (
+              <div style={{ marginTop: 8, fontSize: 13, opacity: 0.82 }}>
+                Total sugerido del servicio aplicado al pago. Si necesitás, podés editar el monto manualmente.
+              </div>
+            ) : null}
           </div>
 
           <div style={{ borderTop: `1px solid ${p.cardBorder}`, paddingTop: 12 }}>
@@ -855,7 +983,7 @@ export default function PaymentsPage() {
             {vehicleMode === 'existing' ? (
               <Select
                 value={paymentForm.vehicleId}
-                onChange={(e) => setPaymentForm((s) => ({ ...s, vehicleId: e.target.value, budgetId: '' }))}
+                onChange={(e) => setPaymentForm((s) => ({ ...s, vehicleId: e.target.value, intakeId: '' }))}
               >
                 <option value="">Sin vehículo</option>
                 {vehiclesForModal.map((v) => (
@@ -928,43 +1056,6 @@ export default function PaymentsPage() {
             )}
           </div>
 
-          <div style={{ borderTop: `1px solid ${p.cardBorder}`, paddingTop: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Presupuesto (opcional)</div>
-            {!paymentForm.customerId.trim() || !paymentForm.vehicleId.trim() ? (
-              <div style={{ fontSize: 13, opacity: 0.75 }}>Seleccioná cliente y vehículo para ver los presupuestos de ese par.</div>
-            ) : loadingBudgetsModal ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <CircularProgress size={18} />
-                <div style={{ fontSize: 13, opacity: 0.75 }}>Cargando presupuestos…</div>
-              </div>
-            ) : budgetOptionsForModal.length === 0 ? (
-              <div style={{ fontSize: 13, opacity: 0.75 }}>No hay presupuestos cargados para este cliente y este vehículo.</div>
-            ) : (
-              <Select
-                value={budgetOptionsForModal.some((b) => b.id === paymentForm.budgetId) ? paymentForm.budgetId : ''}
-                onChange={(e) => {
-                  const id = e.target.value
-                  setPaymentForm((s) => {
-                    const sel = budgetOptionsForModal.find((x) => x.id === id)
-                    const next = { ...s, budgetId: id }
-                    if (sel && (s.amount.trim() === '' || Number(s.amount) === 0)) {
-                      const t = sel.total == null ? 0 : Number(sel.total)
-                      if (Number.isFinite(t)) next.amount = String(t)
-                    }
-                    return next
-                  })
-                }}
-              >
-                <option value="">Sin presupuesto</option>
-                {budgetOptionsForModal.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {formatBudgetOptionLabel(b)}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </div>
-
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>Referencia (opcional)</label>
@@ -1026,17 +1117,20 @@ export default function PaymentsPage() {
                   setPaymentFormError('El monto debe ser un número mayor o igual a 0.')
                   return
                 }
-
+                if (!paymentForm.intakeId.trim()) {
+                  setPaymentFormError('Seleccioná el servicio (obligatorio) para generar el pago.')
+                  return
+                }
                 setCreatingPayment(true)
                 try {
                   await api.payments.create(t, {
                     amount,
                     method,
                     paidAt,
+                    intakeId: paymentForm.intakeId.trim(),
                     customerId: paymentForm.customerId || null,
                     vehicleId: paymentForm.vehicleId || null,
-                    intakeId: null,
-                    budgetId: paymentForm.budgetId.trim() || null,
+                    budgetId: null,
                     note: paymentForm.note.trim() || null,
                     reference: paymentForm.reference.trim() || null,
                   })
@@ -1075,7 +1169,7 @@ export default function PaymentsPage() {
         {receiptPayment ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ fontSize: 13, opacity: 0.75, lineHeight: 1.45 }}>
-              Comprobante de cobro interno del taller. Usá <b>Imprimir PDF</b> para guardarlo o enviarlo (el navegador permite “Guardar como PDF”).
+              Comprobante de cobro interno del taller. Usá <b>Recibo PDF</b> para guardarlo o enviarlo.
             </div>
             <div
               style={{
@@ -1164,15 +1258,18 @@ export default function PaymentsPage() {
                 Cerrar
               </Button>
               <Button
-                onClick={() => {
+                onClick={async () => {
                   setReceiptPrintError(null)
                   const c = receiptPayment.customerId ? customerNameById.get(receiptPayment.customerId) || '—' : '—'
                   const v = receiptPayment.vehicleId ? vehicleLabelById.get(receiptPayment.vehicleId) || '—' : '—'
-                  const html = buildPaymentReceiptHtml(receiptPayment, c, v)
-                  if (!printPaymentReceiptHtml(html)) setReceiptPrintError('No se pudo abrir la impresión.')
+                  try {
+                    await downloadPaymentReceiptPdf(receiptPayment, c, v)
+                  } catch (e) {
+                    setReceiptPrintError(e instanceof Error ? e.message : 'No se pudo generar el PDF.')
+                  }
                 }}
               >
-                <Printer size={16} /> Imprimir PDF
+                <Printer size={16} /> Recibo PDF
               </Button>
             </div>
           </div>

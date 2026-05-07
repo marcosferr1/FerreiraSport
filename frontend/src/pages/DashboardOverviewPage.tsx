@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Button, Badge, Card, CardSection, CircularProgress, Input } from '../components/inline/Primitives'
+import { Button, Badge, Card, CardSection, CircularProgress, Input, Select } from '../components/inline/Primitives'
 import { CheckCircle2, Clock3, CarFront, FileText, DollarSign, Wrench, CalendarRange } from 'lucide-react'
 import { usePalette } from '../theme/ThemeProvider'
 import { useAuth } from '../auth/useAuth'
@@ -122,6 +122,8 @@ function chipStyle(active: boolean) {
 export default function DashboardOverviewPage() {
   const p = usePalette()
   const { token } = useAuth()
+  const [activityPage, setActivityPage] = useState(1)
+  const [activityPageSize, setActivityPageSize] = useState(8)
 
   const [preset, setPreset] = useState<DatePreset>('WEEK')
   const [customFrom, setCustomFrom] = useState(() => {
@@ -270,8 +272,22 @@ export default function DashboardOverviewPage() {
       })
     }
     items.sort((a, b) => new Date(b.when).getTime() - new Date(a.when).getTime())
-    return items.slice(0, 12)
+    return items
   }, [payments, budgetsInRange, customerName, vehiclePlate])
+  const activityTotalPages = Math.max(1, Math.ceil(actividadItems.length / activityPageSize))
+  const pagedActivityItems = useMemo(() => {
+    const safePage = Math.min(activityPage, activityTotalPages)
+    const from = (safePage - 1) * activityPageSize
+    return actividadItems.slice(from, from + activityPageSize)
+  }, [actividadItems, activityPage, activityTotalPages])
+
+  useEffect(() => {
+    setActivityPage(1)
+  }, [preset, customFrom, customTo])
+
+  useEffect(() => {
+    if (activityPage > activityTotalPages) setActivityPage(activityTotalPages)
+  }, [activityPage, activityTotalPages])
 
   const statCard = (title: string, value: string, subtitle: string, icon: React.ReactNode, iconBg: string) => (
     <Card style={{ borderColor: p.cardBorder }}>
@@ -307,10 +323,17 @@ export default function DashboardOverviewPage() {
 
   return (
     <div>
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 26, fontWeight: 900 }}>Dashboard</div>
-        <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>Bienvenido al sistema de gestión del taller</div>
-        <div style={{ fontSize: 14, opacity: 0.65, marginTop: 6 }}>{rangeLabel}</div>
+      <div style={{ marginBottom: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 26, fontWeight: 900 }}>Dashboard</div>
+          <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>Bienvenido al sistema de gestión del taller</div>
+          <div style={{ fontSize: 14, opacity: 0.65, marginTop: 6 }}>{rangeLabel}</div>
+        </div>
+        <img
+          src="/logo-ferreira-sport.png"
+          alt="Ferreira Sport"
+          style={{ width: 400, maxWidth: '50vw', objectFit: 'contain', alignSelf: 'center' }}
+        />
       </div>
 
       <Card style={{ borderColor: p.cardBorder, marginBottom: 16 }}>
@@ -403,9 +426,43 @@ export default function DashboardOverviewPage() {
               ) : actividadItems.length === 0 ? (
                 <div style={{ fontSize: 13, opacity: 0.7 }}>Sin movimientos en este periodo.</div>
               ) : (
-                actividadItems.map((it) => rowCard(it.who, it.what, it.sub, formatWhen(it.when), it.kind))
+                pagedActivityItems.map((it) => rowCard(it.who, it.what, it.sub, formatWhen(it.when), it.kind))
               )}
             </div>
+            {!loading && actividadItems.length > 0 ? (
+              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 13, opacity: 0.72 }}>
+                    Página <b>{Math.min(activityPage, activityTotalPages)}</b> de <b>{activityTotalPages}</b> · {actividadItems.length} movimientos
+                  </div>
+                  <Select
+                    value={String(activityPageSize)}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      setActivityPageSize(Number(e.target.value))
+                      setActivityPage(1)
+                    }}
+                    style={{ width: 90, height: 32, fontSize: 13, padding: '0 8px' }}
+                  >
+                    <option value="8">8</option>
+                    <option value="12">12</option>
+                    <option value="20">20</option>
+                  </Select>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button variant="outline" size="sm" disabled={activityPage <= 1} onClick={() => setActivityPage((p) => Math.max(1, p - 1))}>
+                    Anterior
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={activityPage >= activityTotalPages}
+                    onClick={() => setActivityPage((p) => Math.min(activityTotalPages, p + 1))}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </CardSection>
         </Card>
 

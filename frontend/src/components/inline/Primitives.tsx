@@ -262,13 +262,18 @@ export function Modal({
   title,
   onClose,
   children,
+  overlayStyle,
+  panelStyle,
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: React.ReactNode
+  overlayStyle?: React.CSSProperties
+  panelStyle?: React.CSSProperties
 }) {
   const p = usePalette()
+  const isDark = p.background === '#0B1220'
 
   React.useEffect(() => {
     if (!open) return
@@ -296,23 +301,31 @@ export function Modal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(2,6,23,0.55)',
+        background: isDark ? 'rgba(2,6,23,0.72)' : 'rgba(2,6,23,0.55)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
         zIndex: 1000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 16,
+        overflowY: 'auto',
+        ...(overlayStyle || {}),
       }}
     >
       <div
         style={{
           width: '100%',
           maxWidth: 560,
-          background: p.cardBg,
+          maxHeight: 'calc(100vh - 32px)',
+          background: isDark ? 'rgba(15,23,42,0.98)' : p.cardBg,
           border: `1px solid ${p.cardBorder}`,
           borderRadius: baseRadius(),
-          boxShadow: '0 18px 40px rgba(0,0,0,0.22)',
+          boxShadow: isDark ? '0 20px 46px rgba(0,0,0,0.5)' : '0 18px 40px rgba(0,0,0,0.22)',
           overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          ...(panelStyle || {}),
         }}
       >
         <div
@@ -343,7 +356,7 @@ export function Modal({
             ✕
           </button>
         </div>
-        <div style={{ padding: 18 }}>{children}</div>
+        <div style={{ padding: 18, overflowY: 'auto', minHeight: 0 }}>{children}</div>
       </div>
     </div>
   )

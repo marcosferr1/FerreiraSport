@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, FileText, Plus, Search, Trash2, Wallet, Wrench, XCircle } from 'lucide-react'
+import { jsPDF } from 'jspdf'
 import { Badge, Button, Card, CardSection, CircularProgress, Input, Modal, Select, Textarea } from '../components/inline/Primitives'
 import { useAuth } from '../auth/useAuth'
 import { api } from '../api/client'
@@ -21,6 +22,9 @@ type BudgetApi = {
   vehicleId?: string | null
   status: BudgetStatus | string
   createdAt?: string
+  receivedAt?: string
+  odometer?: number | string | null
+  notes?: string | null
   BudgetLines?: BudgetLine[]
   total?: string | number
 }
@@ -79,6 +83,74 @@ function sanitize(s: string) {
     .replaceAll("'", '&#039;')
 }
 
+function toDateTimeLocalInput(value: unknown) {
+  if (!value) return new Date().toISOString().slice(0, 16)
+  const d = new Date(value as any)
+  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 16)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+const BUSINESS_NAME = 'FERREIRA SPORT'
+const BUSINESS_TAGLINE = 'Mecanica integral y diagnostico automotor'
+const BUSINESS_EXPERIENCE = '35 años de experiencia'
+const BUSINESS_SERVICES = 'Diagnostico electronico • Clonado de llaves • Mecanica integral'
+const BUSINESS_OWNER = 'Santiago Ferreira'
+const BUSINESS_PHONE = '3576 15414921'
+const BUSINESS_EMAIL = 'santiagoferreira520@gmail.com'
+const BUSINESS_ADDRESS = 'Rivadavia 1126, Arroyito, Cordoba, Argentina'
+
+async function loadImageAsDataUrl(src: string): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('No se pudo procesar el logo para PDF.'))
+        return
+      }
+      ctx.drawImage(img, 0, 0)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    img.onerror = () => reject(new Error('No se pudo cargar el logo para PDF.'))
+    img.src = src
+  })
+}
+
+function drawBusinessFooter(doc: jsPDF) {
+  const pageH = doc.internal.pageSize.getHeight()
+  const pageW = doc.internal.pageSize.getWidth()
+  const left = 14
+  const right = pageW - 14
+  const top = pageH - 27
+  const middle = left + (right - left) * 0.58
+
+  doc.setDrawColor(210, 214, 220)
+  doc.line(left, top, right, top)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.5)
+  doc.setTextColor(26, 86, 219)
+  doc.text(BUSINESS_NAME, left, top + 5)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.8)
+  doc.setTextColor(70, 70, 70)
+  doc.text(BUSINESS_TAGLINE, left, top + 9.4)
+  doc.text(BUSINESS_EXPERIENCE, left, top + 13.7)
+  doc.text(BUSINESS_SERVICES, left, top + 18)
+
+  doc.setFontSize(9)
+  doc.setTextColor(30, 30, 30)
+  doc.text(`${BUSINESS_OWNER} • Tel: ${BUSINESS_PHONE}`, middle, top + 5)
+  doc.text(BUSINESS_EMAIL, middle, top + 9.4)
+  doc.text(BUSINESS_ADDRESS, middle, top + 13.7)
+}
+
 function paymentNavigateStateFromBudget(b: BudgetApi) {
   const totalNumber = b.total == null ? 0 : Number(b.total)
   return {
@@ -96,6 +168,8 @@ export default function BudgetsPage() {
 
   const [query, setQuery] = useState('')
   const [tab, setTab] = useState<'TODOS' | BudgetStatus>('TODOS')
+  const [page, setPage] = useState(1)
+  const pageSize = 10
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [budgets, setBudgets] = useState<BudgetApi[]>([])
@@ -226,6 +300,20 @@ export default function BudgetsPage() {
       return [code, customer, vehicle, description].some((x) => x.includes(q))
     })
   }, [budgets, query, customerNameById, vehicleLabelById])
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const pagedBudgets = useMemo(() => {
+    const safePage = Math.min(page, totalPages)
+    const from = (safePage - 1) * pageSize
+    return filtered.slice(from, from + pageSize)
+  }, [filtered, page, totalPages])
+
+  useEffect(() => {
+    setPage(1)
+  }, [query, tab])
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
 
   function resetWizard() {
     setWizardStep(1)
@@ -309,6 +397,9 @@ export default function BudgetsPage() {
       .filter((line) => line.description?.startsWith('Servicio:'))
       .map((line) => ({
         name: line.description.replace('Servicio:', '').trim(),
+        serviceCatalogId:
+          serviceCatalog.find((s) => s.name.trim().toLowerCase() === line.description.replace('Servicio:', '').trim().toLowerCase())?.id || '',
+        isNew: !serviceCatalog.some((s) => s.name.trim().toLowerCase() === line.description.replace('Servicio:', '').trim().toLowerCase()),
         laborPrice: String(Number(line.unitPrice) || Number(line.lineTotal) || 0),
         notes: '',
       }))
@@ -317,8 +408,13 @@ export default function BudgetsPage() {
       .filter((line) => line.description?.startsWith('Repuesto:'))
       .map((line) => ({
         name: line.description.replace('Repuesto:', '').trim(),
-        brand: '',
-        sku: '',
+        partCatalogId:
+          partCatalog.find((p) => p.name.trim().toLowerCase() === line.description.replace('Repuesto:', '').trim().toLowerCase())?.id || '',
+        isNew: !partCatalog.some((p) => p.name.trim().toLowerCase() === line.description.replace('Repuesto:', '').trim().toLowerCase()),
+        brand:
+          partCatalog.find((p) => p.name.trim().toLowerCase() === line.description.replace('Repuesto:', '').trim().toLowerCase())?.brand || '',
+        sku:
+          partCatalog.find((p) => p.name.trim().toLowerCase() === line.description.replace('Repuesto:', '').trim().toLowerCase())?.sku || '',
         qty: String(Number(line.qty) || 1),
         unitPrice: String(Number(line.unitPrice) || 0),
         notes: '',
@@ -328,59 +424,115 @@ export default function BudgetsPage() {
       budgetId: b.id,
       customerId: b.customerId || '',
       vehicleId: b.vehicleId || '',
+      odometer: b.odometer != null ? String(b.odometer) : '',
+      receivedAt: toDateTimeLocalInput(b.receivedAt || b.createdAt),
+      intakeNotes: b.notes || '',
       services: servicesPrefill,
       parts: partsPrefill,
     }
   }
 
-  function printBudget(b: BudgetApi) {
+  async function printBudget(b: BudgetApi) {
     const customer = b.customerId ? customerNameById.get(b.customerId) || '—' : '—'
     const vehicle = b.vehicleId ? vehicleLabelById.get(b.vehicleId) || '—' : '—'
     const plate = b.vehicleId ? (vehicles.find((v) => v.id === b.vehicleId)?.plate || 'Sin placa') : 'Sin placa'
     const surname = surnameFromName(customer)
     const budgetDate = formatDate(b.createdAt)
     const displayName = `${plate} | ${surname} | ${budgetDate}`
-    const lines = (b.BudgetLines || [])
-      .map((l) => {
-        const qty = Number(l.qty) || 1
-        const unit = Number(l.unitPrice) || 0
-        const total = Number(l.lineTotal) || qty * unit
-        return `<tr><td>${sanitize(l.description)}</td><td>${qty}</td><td>${formatMoney(unit)}</td><td>${formatMoney(total)}</td></tr>`
-      })
-      .join('')
+    const lines = (b.BudgetLines || []).map((l) => {
+      const qty = Number(l.qty) || 1
+      const unit = Number(l.unitPrice) || 0
+      const total = Number(l.lineTotal) || qty * unit
+      return { description: l.description, qty, unit, total }
+    })
     const total = Number(b.total) || (b.BudgetLines || []).reduce((acc, l) => acc + (Number(l.lineTotal) || 0), 0)
 
-    const logoUrl = `${window.location.origin}/ferreira-logo.png`
-    const html = `<!doctype html><html><head><meta charset="utf-8" /><title>Presupuesto ${sanitize(displayName)}</title><style>body{font-family:Arial,sans-serif;padding:24px}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.logo{width:190px;max-width:38vw;object-fit:contain}h1{margin:0 0 8px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}.meta{color:#444;margin-bottom:12px}.total{margin-top:16px;font-size:18px;font-weight:700;text-align:right}</style></head><body><div class="head"><div><h1>Presupuesto ${sanitize(displayName)}</h1><div class="meta">Cliente: ${sanitize(customer)}<br/>Vehículo: ${sanitize(vehicle)}<br/>Fecha: ${sanitize(formatDate(b.createdAt))}</div></div><img src="${logoUrl}" class="logo" alt="FERREIRA SPORT" /></div><table><thead><tr><th>Descripción</th><th>Cant.</th><th>Unit.</th><th>Total</th></tr></thead><tbody>${lines}</tbody></table><div class="total">Total: ${formatMoney(total)}</div><script>window.onload=()=>window.print()</script></body></html>`
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+    const margin = 14
+    const footerTop = pageH - 36
+    const tableBottomY = footerTop - 4
 
-    const iframe = document.createElement('iframe')
-    iframe.style.position = 'fixed'
-    iframe.style.right = '0'
-    iframe.style.bottom = '0'
-    iframe.style.width = '0'
-    iframe.style.height = '0'
-    iframe.style.border = '0'
-    iframe.setAttribute('aria-hidden', 'true')
-    document.body.appendChild(iframe)
-
-    const frameDoc = iframe.contentWindow?.document
-    if (!frameDoc || !iframe.contentWindow) {
-      document.body.removeChild(iframe)
-      setError('No se pudo abrir la impresión del PDF en este navegador.')
-      return
+    const drawHeader = () => {
+      doc.setTextColor(20, 20, 20)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(16)
+      doc.text(`Presupuesto ${displayName}`, margin, 18)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(10.5)
+      doc.setTextColor(80, 80, 80)
+      doc.text(`Cliente: ${customer}`, margin, 24)
+      doc.text(`Vehículo: ${vehicle}`, margin, 29)
+      doc.text(`Fecha: ${formatDate(b.createdAt)}`, margin, 34)
     }
 
-    frameDoc.open()
-    frameDoc.write(html)
-    frameDoc.close()
+    const drawTableHeader = (startY: number) => {
+      doc.setTextColor(30, 30, 30)
+      doc.setFillColor(245, 245, 245)
+      doc.rect(margin, startY, 102, 8, 'F')
+      doc.rect(margin + 102, startY, 16, 8, 'F')
+      doc.rect(margin + 118, startY, 28, 8, 'F')
+      doc.rect(margin + 146, startY, pageW - margin - (margin + 146), 8, 'F')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(10)
+      doc.text('Descripción', margin + 2, startY + 5.4)
+      doc.text('Cant.', margin + 104, startY + 5.4)
+      doc.text('Unit.', margin + 120, startY + 5.4)
+      doc.text('Total', margin + 148, startY + 5.4)
+    }
 
-    window.setTimeout(() => {
-      iframe.contentWindow?.focus()
-      iframe.contentWindow?.print()
-      window.setTimeout(() => {
-        if (document.body.contains(iframe)) document.body.removeChild(iframe)
-      }, 1200)
-    }, 150)
+    try {
+      const logoDataUrl = await loadImageAsDataUrl(`${window.location.origin}/logo-ferreira-sport.png`)
+      doc.addImage(logoDataUrl, 'PNG', pageW - 58, 10, 44, 20)
+    } catch {
+      // Si falla el logo, el PDF igual se genera.
+    }
+
+    drawHeader()
+    let y = 40
+    drawTableHeader(y)
+    y += 9
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    lines.forEach((line) => {
+      const descLines = doc.splitTextToSize(line.description || '—', 98)
+      const rowH = Math.max(8, descLines.length * 4.3 + 2)
+      if (y + rowH > tableBottomY) {
+        drawBusinessFooter(doc)
+        doc.addPage()
+        drawHeader()
+        y = 40
+        drawTableHeader(y)
+        y += 9
+      }
+
+      doc.setDrawColor(230)
+      doc.rect(margin, y, 102, rowH)
+      doc.rect(margin + 102, y, 16, rowH)
+      doc.rect(margin + 118, y, 28, rowH)
+      doc.rect(margin + 146, y, pageW - margin - (margin + 146), rowH)
+      doc.text(descLines, margin + 2, y + 5)
+      doc.text(String(line.qty), margin + 104, y + 5)
+      doc.text(formatMoney(line.unit), margin + 120, y + 5)
+      doc.text(formatMoney(line.total), margin + 148, y + 5)
+      y += rowH
+    })
+
+    if (y + 14 > tableBottomY) {
+      drawBusinessFooter(doc)
+      doc.addPage()
+      drawHeader()
+      y = 44
+    }
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(13)
+    doc.setTextColor(20, 20, 20)
+    doc.text(`Total: ${formatMoney(total)}`, pageW - margin, y + 9, { align: 'right' })
+    drawBusinessFooter(doc)
+    doc.save(`Presupuesto-${plate}-${shortId(b.id)}.pdf`)
   }
 
   return (
@@ -445,7 +597,7 @@ export default function BudgetsPage() {
         <Card style={{ borderColor: 'rgba(239,68,68,0.35)' }}><CardSection>{error}</CardSection></Card>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {filtered.map((b) => {
+          {pagedBudgets.map((b) => {
             const status = String(b.status) as BudgetStatus
             const tone = status === 'APROBADO' ? 'success' : status === 'RECHAZADO' ? 'danger' : 'warning'
             const totalNumber = b.total == null ? 0 : Number(b.total)
@@ -526,6 +678,21 @@ export default function BudgetsPage() {
           ) : null}
         </div>
       )}
+      {!loading && !error && filtered.length > 0 ? (
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, opacity: 0.72 }}>
+            Página <b>{Math.min(page, totalPages)}</b> de <b>{totalPages}</b> · {filtered.length} presupuestos
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              Anterior
+            </Button>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+              Siguiente
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <Modal open={wizardOpen} title="Nuevo Presupuesto" onClose={() => !creatingBudget && setWizardOpen(false)}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
